@@ -1,0 +1,11 @@
+version: '3'
+services:
+    server:
+        build:
+            dockerfile: Dockerfile
+            context: ./entbwdly-calculator
+        ports:
+            - '3000:3000'
+        volumes:
+            # Access to Allicat files
+            - /home/dave/Projects/ent-bwdly-calculator/entbwdly-calculator:/app
