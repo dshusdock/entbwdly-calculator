@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { type } from 'os';
 import * as FS from './filesystem-api';
-import { BWData, BW_RESULT_LINE, DESTINATION_INFO } from './bwdata';
+import { BWData, BW_RESULT_LINE, DESTINATION_INFO, BWDLY_ROW_DATA } from './bwdata';
 
 
 @Injectable()
@@ -165,6 +165,8 @@ export class AppService {
     }
 
     convertFormat() {
+        let rowData: BWDLY_ROW_DATA[] = [];
+
         
     }
 
