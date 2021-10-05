@@ -7,8 +7,7 @@ export class AppController {
     constructor(private readonly appService: AppService) {}
 
     @Get()
-    getHello(): string {
-        this.logger.log("Hello there");
-        return this.appService.processData();
+    getHello(): any {
+        return this.appService.processDataMain();
     }
 }
