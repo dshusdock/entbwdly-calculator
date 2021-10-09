@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { type } from 'os';
 import * as FS from './filesystem-api';
-import { BWData, BW_RESULT_LINE, DESTINATION_INFO, BWDLY_ROW_DATA } from './bwdata';
+import { BWData, BW_RESULT_LINE, DESTINATION_INFO } from './bwdata';
 
 
 @Injectable()
@@ -38,33 +38,42 @@ export class AppService {
            
             const entLvlTitleData = entLvlTitle.exec(data.title);
 
-            for( let i = 0; i < zoneCnt; i++ ) {
-                const zoneLvlTitleData = zoneLvlTitle.exec(data.children[i].title);
-                let nodeAry = this.processNodeLevel(data.children[i].children);
-                
-                this.logger.log("nodeary length = " + nodeAry.length);
+            try {
+                for( let i = 0; i < zoneCnt; i++ ) {
+                    const zoneLvlTitleData = zoneLvlTitle.exec(data.children[i].title);
 
-                for ( let ii = 0; ii < nodeAry.length; ii++) {
-                    let  data = <BW_RESULT_LINE>{};
-                    let dest_data = <DESTINATION_INFO>{};
+                    this.logger.log("zonecnt: " + zoneCnt + " zoneLvlTitleData" + zoneLvlTitleData) ;
 
-                    data.date = entLvlTitle[date];
-                    data.src_region = "SRC_REGION";
-                    data.src_location = "SRC_LOCATION";
-                    dest_data.dest_zone = data.src_zone = zoneLvlTitleData[3];
-                    dest_data.dest_vip = data.src_vip = zoneLvlTitleData[2];
-                    dest_data.dest_device = data.src_device = nodeAry[ii].device;
-                    dest_data.dest_ip = data.src_ip = nodeAry[ii].dev_ip;
-                    data.calc_bandwidth = nodeAry[ii].bwdly;
-                    data.from_ip = nodeAry[ii].from_ip;
-                    data.dest_region = "DEST_REGION";
-                    data.dest_location = "DEST_LOCATION";
+                    let nodeAry = this.processNodeLevel(data.children[i].children);
+                    
+                    // this.logger.log("nodeary length = " + nodeAry.length);
 
-                    this.lineItems.push(data);
+                    for ( let ii = 0; ii < nodeAry.length; ii++) {
+                        let  data = <BW_RESULT_LINE>{};
+                        let dest_data = <DESTINATION_INFO>{};
 
-                    // Build destination info table
-                    this.destInfoTbl.push(dest_data);
+                        data.date = entLvlTitle[date];
+                        data.src_region = "SRC_REGION";
+                        data.src_location = "SRC_LOCATION";
+                        dest_data.dest_zone = data.src_zone = zoneLvlTitleData[3];
+                        dest_data.dest_vip = data.src_vip = zoneLvlTitleData[2];
+                        dest_data.dest_device = data.src_device = nodeAry[ii].device;
+                        dest_data.dest_ip = data.src_ip = nodeAry[ii].dev_ip;
+                        data.calc_bandwidth = nodeAry[ii].bwdly;
+                        data.from_ip = nodeAry[ii].from_ip;
+                        data.dest_region = "DEST_REGION";
+                        data.dest_location = "DEST_LOCATION";
+
+                        if (data.calc_bandwidth !== null) {
+                            this.lineItems.push(data);
+                        }
+                        
+                        // Build destination info table
+                        this.destInfoTbl.push(dest_data);
+                    }
                 }
+            } catch(err) {
+                // this.logger.log("ERROR: " + err);
             }
 
            resolve(/*this.lineItems*/1);
@@ -84,12 +93,20 @@ export class AppService {
         for( let i = 0; i < data.length; i++) {
             const obj = Object.create(nodeObj);
             const nodeLvlTitleData = nodeLvlTitle.exec(data[i].title);
+
+            this.logger.log("node level count: " + data.length + " nodeLvlTitleData" + nodeLvlTitleData) ;
             
             obj.device =  nodeLvlTitleData[1];
             obj.dev_ip = nodeLvlTitleData[2];
             let result = this.processTestLevel(data[i].children);
-            obj.bwdly = result.bwdly;
-            obj.from_ip = result.from_ip;
+            if (result === -1) {
+                obj.bwdly = "No Data";
+                obj.from_ip = "No Data";
+            } else {
+                obj.bwdly = result.bwdly;
+                obj.from_ip = result.from_ip;
+            }
+            
             nodeObjAry.push(obj);
         }
         return nodeObjAry;
@@ -108,11 +125,21 @@ export class AppService {
         for ( let i = 0; i < testLvl.length; i++) {
             let checkStr: string = testLvl[i].title;
 
+            // this.logger.log("[" + i + "] " + "test level count: " + testLvl.length + " nodeLvlTitleData" + testLvl[i].title) ;
+
             if (checkStr.indexOf("BWdly") ) {
+                if( i === (testLvl.length - 1)) {
+                    this.logger.log("No BWD Delay string found");
+                    let obj = Object.create(testObj);   
+                    obj.bwdly = "ND";
+                    obj.from_ip = "ND";
+                    return -1;
+                }
                 continue;
             }
 
-            const obj = Object.create(testObj);            
+            let obj = Object.create(testObj);   
+                     
             // this.logger.log("Checking ..." + data[i].title);
             if ( (result = strPtrn1.exec(testLvl[i].title)) ) {
                 obj.bwdly = result[1];
@@ -133,7 +160,7 @@ export class AppService {
     getDestDataIndex(from_ip) {
 
         for( let i = 0; i < this.destInfoTbl.length; i++ ) {
-            this.logger.log(`Got ${this.destInfoTbl[i].dest_ip} looking for ${from_ip}}`);
+            // this.logger.log(`Got ${this.destInfoTbl[i].dest_ip} looking for ${from_ip}}`);
             if(this.destInfoTbl[i].dest_ip === from_ip) {
                 return i;
             } else if( this.destInfoTbl[i].dest_vip === from_ip) {
@@ -144,35 +171,43 @@ export class AppService {
 
     populatelDestinationInfo() {
        
-        this.logger.log("Entering populatelDestinationInfo");
-        for (let i = 0; i < this.lineItems.length; i++) {
-            let index = this.getDestDataIndex(this.lineItems[i].from_ip);
-            
-            this.logger.log("Index: " + index);
-            if (this.lineItems[i].src_device.indexOf("MM")) {
-                this.lineItems[i].dest_ip = this.destInfoTbl[index].dest_ip;
-                this.lineItems[i].dest_vip = this.destInfoTbl[index].dest_vip;
-                this.lineItems[i].dest_device = this.destInfoTbl[index].dest_device;
-                this.lineItems[i].dest_zone = this.destInfoTbl[index].dest_zone;
-            } else {
-                this.lineItems[i].dest_ip = this.destInfoTbl[index].dest_vip;
-                this.lineItems[i].dest_vip = this.destInfoTbl[index].dest_vip;
-                this.lineItems[i].dest_device = "CCM";
-                this.lineItems[i].dest_zone = this.destInfoTbl[index].dest_zone;
+        this.logger.log("Entering populatelDestinationInfo: " + this.lineItems.length);
+        try {
+            for (let i = 0; i < this.lineItems.length; i++) {
+                if(this.lineItems[i].from_ip.indexOf("ND") || this.lineItems[i].from_ip.indexOf("NS")){
+                    continue;
+                }
+                let index = this.getDestDataIndex(this.lineItems[i].from_ip);
+                
+                this.logger.log("Index: " + index);
+                if (this.lineItems[i].src_device.indexOf("MM")) {
+                    this.lineItems[i].dest_ip = this.destInfoTbl[index].dest_ip;
+                    this.lineItems[i].dest_vip = this.destInfoTbl[index].dest_vip;
+                    this.lineItems[i].dest_device = this.destInfoTbl[index].dest_device;
+                    this.lineItems[i].dest_zone = this.destInfoTbl[index].dest_zone;
+                } else {
+                    this.lineItems[i].dest_ip = this.destInfoTbl[index].dest_vip;
+                    this.lineItems[i].dest_vip = this.destInfoTbl[index].dest_vip;
+                    this.lineItems[i].dest_device = "CCM";
+                    this.lineItems[i].dest_zone = this.destInfoTbl[index].dest_zone;
+                }
             }
+        } catch( err ) {
+            this.logger.log(err);
             
         }
+        
     }
 
     convertFormat() {
-        let rowData: BWDLY_ROW_DATA[] = [];
-
         
     }
 
     readFile() {
 
         const file = "171.151.3.230.jsonh.1632872063";
+        // const file = "10.110.96.52.jsonh.1633613410";
+
         const path = "";
         
         return new Promise((resolve, reject) => {
@@ -188,6 +223,7 @@ export class AppService {
 
     dumpObj() {
 
-        this.logger.log(JSON.stringify(this.lineItems[0]));
+        // this.logger.log(JSON.stringify(this.lineItems[0]));
     }
 }
+
